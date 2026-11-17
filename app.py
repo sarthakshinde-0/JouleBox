@@ -4,8 +4,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 import time
 from datetime import datetime
 from sklearn.linear_model import LinearRegression, Ridge
@@ -24,131 +22,243 @@ warnings.filterwarnings('ignore')
 st.set_page_config(page_title="Smart Home Energy Analytics", page_icon="⚡", layout="wide")
 
 # ═══════════════════════════════════════════════════════════════════════════
+# DESIGN TOKENS  (night-grid palette: ink background, amber = energy, teal = solar/off-peak)
+# ═══════════════════════════════════════════════════════════════════════════
+INK = "#0c1220"
+PANEL = "#131b2e"
+LINE = "#25314d"
+TEXT = "#eef1f8"
+MUTED = "#9ba7c2"
+AMBER = "#ffb020"
+TEAL = "#2dd4bf"
+RED = "#ff5d73"
+
+# ═══════════════════════════════════════════════════════════════════════════
 # CSS STYLING
 # ═══════════════════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
-    .stApp { background-color: #ffffff; }
-    .main-header { font-size: 2.5rem; font-weight: 700; color: #000000; padding: 1rem 0; border-bottom: 3px solid #000000; margin-bottom: 1rem; }
-    
-    /* Modern Task Cards */
-    .task-card-dark {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        border-radius: 16px;
-        padding: 2rem;
-        color: #ffffff;
-        margin: 1rem 0;
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
-        border-left: 5px solid #00d9ff;
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
+    @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+
+    :root {
+        --ink: #0c1220;
+        --panel: #131b2e;
+        --panel-2: #18223a;
+        --line: #25314d;
+        --text: #eef1f8;
+        --muted: #9ba7c2;
+        --amber: #ffb020;
+        --teal: #2dd4bf;
+        --red: #ff5d73;
     }
-    
-    .task-card-dark:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 12px 32px rgba(0, 0, 0, 0.2);
+
+    /* ---------- Base: dark canvas + readable text everywhere ---------- */
+    .stApp {
+        background: var(--ink);
+        color: var(--text);
+        font-family: 'Manrope', 'Segoe UI', system-ui, sans-serif;
     }
-    
-    .task-card-light {
-        background: linear-gradient(135deg, #fff5f5 0%, #ffffff 100%);
-        border-radius: 16px;
-        padding: 2rem;
-        color: #1a1a2e;
-        margin: 1rem 0;
-        box-shadow: 0 8px 24px rgba(220, 53, 69, 0.1);
-        border-left: 5px solid #dc3545;
-        transition: transform 0.3s ease, box-shadow 0.3s ease;
-    }
-    
-    .task-card-light:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 12px 32px rgba(220, 53, 69, 0.2);
-    }
-    
-    .task-card-dark h4, .task-card-light h4 {
-        font-size: 1.4rem;
+    header[data-testid="stHeader"] { background: transparent; }
+    #MainMenu { visibility: hidden; }
+    footer { visibility: hidden; }
+    .block-container { padding-top: 2.2rem; max-width: 1280px; }
+
+    .stApp h1, .stApp h2, .stApp h3, .stApp h4, .stApp h5, .stApp h6 {
+        color: var(--text) !important;
+        font-family: inherit;
         font-weight: 700;
-        margin-bottom: 1.5rem;
+        letter-spacing: -0.01em;
+    }
+    .stApp [data-testid="stMarkdownContainer"] p,
+    .stApp [data-testid="stMarkdownContainer"] li,
+    .stApp [data-testid="stMarkdownContainer"] td,
+    .stApp [data-testid="stMarkdownContainer"] th { color: var(--text); }
+    .stApp [data-testid="stMarkdownContainer"] strong { color: #ffffff; }
+    .stApp label,
+    .stApp [data-testid="stWidgetLabel"] p { color: var(--text) !important; font-weight: 600; }
+    .stApp [data-testid="stCaptionContainer"],
+    .stApp .stCaption { color: var(--muted) !important; }
+    .stApp hr { border-color: var(--line) !important; opacity: 1; }
+
+    /* ---------- Hero ---------- */
+    .stApp .hero {
         display: flex;
-        align-items: center;
-        gap: 0.5rem;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 2rem;
+        padding-bottom: 1.4rem;
+        margin-bottom: 0.5rem;
+        border-bottom: 1px solid var(--line);
     }
-    
-    .task-card-dark p, .task-card-light p {
-        font-size: 0.95rem;
-        margin: 0.75rem 0;
-        line-height: 1.6;
+    .stApp .hero-title {
+        font-size: 2.6rem;
+        font-weight: 800;
+        letter-spacing: -0.025em;
+        line-height: 1.1;
+        margin: 0 0 0.6rem 0;
+        padding: 0;
+        color: #ffffff !important;
     }
-    
-    .task-card-dark strong, .task-card-light strong {
-        color: #00d9ff;
-        font-weight: 600;
+    .stApp .hero-sub {
+        font-size: 1.05rem;
+        color: var(--muted) !important;
+        margin: 0;
+        max-width: 38rem;
+        line-height: 1.5;
     }
-    
-    .task-card-light strong {
-        color: #dc3545;
-        font-weight: 600;
+    .stApp .hero-curve { width: 240px; height: 70px; flex-shrink: 0; }
+    @media (max-width: 760px) {
+        .stApp .hero-curve { display: none; }
+        .stApp .hero-title { font-size: 2rem; }
     }
-    
-    /* Metric Cards */
-    .metric-card {
-        background: #ffffff;
-        border: 2px solid #e5e5e5;
-        border-radius: 12px;
-        padding: 1.5rem;
+
+    /* ---------- Sidebar ---------- */
+    section[data-testid="stSidebar"] {
+        background: #0f1626;
+        border-right: 1px solid var(--line);
+    }
+
+    /* ---------- Metrics ---------- */
+    .stApp [data-testid="stMetric"] {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 1rem 1.2rem;
+    }
+    .stApp [data-testid="stMetricLabel"] p { color: var(--muted) !important; font-weight: 600; }
+    .stApp [data-testid="stMetricValue"] { color: #ffffff; font-weight: 800; }
+
+    /* ---------- Buttons ---------- */
+    .stApp .stButton > button {
+        background: var(--amber);
+        border: 0;
+        border-radius: 8px;
+        padding: 0.6rem 1.5rem;
+        font-weight: 700;
+        transition: background 0.15s ease;
+    }
+    .stApp .stButton > button p,
+    .stApp .stButton > button span { color: #1a1200 !important; font-weight: 700; }
+    .stApp .stButton > button:hover { background: #ffc24d; }
+    .stApp .stButton > button:focus-visible { outline: 2px solid var(--teal); outline-offset: 2px; }
+
+    /* ---------- Tabs ---------- */
+    .stApp .stTabs [data-baseweb="tab-list"] { gap: 4px; border-bottom: 1px solid var(--line); }
+    .stApp .stTabs [data-baseweb="tab"] p { color: var(--muted) !important; font-weight: 600; }
+    .stApp .stTabs [aria-selected="true"] p { color: #ffffff !important; }
+    .stApp .stTabs [data-baseweb="tab-highlight"] { background-color: var(--amber); }
+
+    /* ---------- Expanders, alerts, tables ---------- */
+    .stApp [data-testid="stExpander"] {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+    }
+    .stApp [data-testid="stExpander"] summary p { font-weight: 600; }
+    .stApp [data-testid="stAlert"] { border-radius: 10px; }
+    .stApp [data-testid="stMarkdownContainer"] table { border-collapse: collapse; width: 100%; }
+    .stApp [data-testid="stMarkdownContainer"] th,
+    .stApp [data-testid="stMarkdownContainer"] td {
+        border: 1px solid var(--line) !important;
+        padding: 0.5rem 0.8rem;
+    }
+    .stApp [data-testid="stMarkdownContainer"] th { background: var(--panel-2); }
+
+    /* ---------- Task cards (Home) ---------- */
+    .stApp .task-card {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-left-width: 4px;
+        border-radius: 10px;
+        padding: 1.4rem 1.6rem;
+        margin: 0.5rem 0 1rem 0;
+    }
+    .stApp .task-card.amber { border-left-color: var(--amber); }
+    .stApp .task-card.red { border-left-color: var(--red); }
+    .stApp .task-card h4 { font-size: 1.2rem; margin: 0 0 0.9rem 0; }
+    .stApp .task-card p { font-size: 0.95rem; margin: 0.45rem 0; line-height: 1.6; color: var(--muted); }
+    .stApp .task-card p strong { color: var(--text); }
+
+    /* ---------- Callouts (observations, insights, results) ---------- */
+    .stApp .callout {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-left-width: 4px;
+        border-radius: 10px;
+        padding: 1rem 1.3rem;
+        margin: 1rem 0;
+        line-height: 1.7;
+    }
+    .stApp .callout.teal { border-left-color: var(--teal); }
+    .stApp .callout.amber { border-left-color: var(--amber); }
+    .stApp .callout.red { border-left-color: var(--red); }
+    .stApp .callout h3 { margin: 0 0 0.4rem 0; }
+    .stApp .callout p { margin: 0.2rem 0; }
+
+    /* ---------- Live prediction result ---------- */
+    .stApp .result {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-top: 4px solid var(--amber);
+        border-radius: 10px;
         text-align: center;
-        transition: all 0.3s ease;
+        padding: 2rem 1rem;
+        margin: 1.2rem 0;
     }
-    
-    .metric-card:hover {
-        border-color: #000000;
-        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
-    }
-    
-    /* Info Boxes */
-    .info-box {
-        background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-        border-radius: 12px;
-        padding: 1.5rem;
-        color: #ffffff;
-        margin: 1rem 0;
-    }
-    
-    .success-box {
-        background-color: #f0fff4;
-        border-left: 4px solid #28a745;
-        border-radius: 8px;
-        padding: 1rem;
-        margin: 1rem 0;
-    }
-    
-    .warning-box {
-        background-color: #fff9f9;
-        border-left: 4px solid #dc3545;
-        border-radius: 8px;
-        padding: 1rem;
-        margin: 1rem 0;
-    }
-    
-    .footer {
+    .stApp .result-value { font-size: 3.4rem; font-weight: 800; color: var(--amber); letter-spacing: -0.02em; line-height: 1; }
+    .stApp .result-label { font-size: 1.05rem; color: var(--muted); margin-top: 0.6rem; }
+
+    /* ---------- Footer ---------- */
+    .stApp .footer {
         text-align: center;
         margin-top: 3rem;
-        padding: 2rem;
-        color: #999999;
+        padding: 1.5rem;
+        color: var(--muted);
         font-size: 0.85rem;
-        border-top: 1px solid #e5e5e5;
+        border-top: 1px solid var(--line);
     }
-    
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
 </style>
 """, unsafe_allow_html=True)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
+# CHART HELPERS  (keeps every Plotly chart on the same dark theme)
+# ═══════════════════════════════════════════════════════════════════════════
+def style_fig(fig):
+    fig.update_layout(
+        template="plotly_dark",
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Manrope, Segoe UI, sans-serif", color=TEXT),
+        title_font=dict(size=18, color="#ffffff"),
+        margin=dict(l=20, r=20, t=60, b=20),
+        legend=dict(bgcolor="rgba(0,0,0,0)"),
+    )
+    fig.update_xaxes(gridcolor="rgba(255,255,255,0.07)", zeroline=False, linecolor=LINE)
+    fig.update_yaxes(gridcolor="rgba(255,255,255,0.07)", zeroline=False, linecolor=LINE)
+    return fig
+
+
+def show_chart(fig):
+    st.plotly_chart(style_fig(fig), width='stretch', theme=None)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
 # HEADER
 # ═══════════════════════════════════════════════════════════════════════════
-st.markdown('<div class="main-header">⚡ Smart Home Energy Analytics</div>', unsafe_allow_html=True)
-st.write("AI-Powered Load Forecasting & Conservation Advisor for Smart Grid Optimization")
+st.markdown("""
+<div class="hero">
+    <div>
+        <h1 class="hero-title">Smart Home Energy Analytics</h1>
+        <p class="hero-sub">AI-Powered Load Forecasting &amp; Conservation Advisor for Smart Grid Optimization</p>
+    </div>
+    <svg class="hero-curve" viewBox="0 0 240 70" fill="none" aria-hidden="true">
+        <path d="M0,54 C18,52 30,50 46,40 S72,20 92,30 S122,50 142,43 S166,12 186,10 S222,40 240,46 L240,70 L0,70 Z" fill="#ffb020" fill-opacity="0.10"/>
+        <path d="M0,54 C18,52 30,50 46,40 S72,20 92,30 S122,50 142,43 S166,12 186,10 S222,40 240,46" stroke="#ffb020" stroke-width="2.5" stroke-linecap="round"/>
+        <circle cx="186" cy="10" r="4" fill="#ffb020"/>
+    </svg>
+</div>
+""", unsafe_allow_html=True)
 
 # ═══════════════════════════════════════════════════════════════════════════
 # SIDEBAR NAVIGATION
@@ -171,7 +281,7 @@ with st.sidebar:
         time.sleep(refresh_interval)
         st.rerun()
     st.markdown("---")
-    st.caption("v2.1 | 2026")
+    st.caption("v2.2 | 2026")
 
 # ═══════════════════════════════════════════════════════════════════════════
 # DATA LOADING
@@ -212,9 +322,9 @@ if df is None:
 # ═══════════════════════════════════════════════════════════════════════════
 
 def show_home():
-    """Home Page - Modern Cards + Metrics + Info"""
+    """Home Page - Task cards + Metrics + Info"""
     st.markdown("---")
-    
+
     # Welcome Message
     st.write("### 👋 Welcome to Smart Home Energy Analytics")
     st.write("""
@@ -224,15 +334,15 @@ def show_home():
     - **Optimize** energy usage for cost savings
     - **Balance** grid load for better efficiency
     """)
-    
+
     st.markdown("---")
-    
-    # Modern Task Cards
+
+    # Task Cards
     col1, col2 = st.columns(2)
-    
+
     with col1:
         st.markdown("""
-        <div class="task-card-dark">
+        <div class="task-card amber">
             <h4>🔋 Task 1: Smart Grid Load Balancing</h4>
             <p><strong>Type:</strong> Supervised Regression</p>
             <p><strong>Goal:</strong> Predict energy consumption based on environmental and usage factors</p>
@@ -240,10 +350,10 @@ def show_home():
             <p><strong>Metrics:</strong> R² Score, MAE, RMSE</p>
         </div>
         """, unsafe_allow_html=True)
-    
+
     with col2:
         st.markdown("""
-        <div class="task-card-light">
+        <div class="task-card red">
             <h4>🚨 Task 2: Electricity Theft Detection</h4>
             <p><strong>Type:</strong> Unsupervised Anomaly Detection</p>
             <p><strong>Goal:</strong> Identify abnormal consumption patterns</p>
@@ -251,9 +361,9 @@ def show_home():
             <p><strong>Output:</strong> Flagged records for investigation</p>
         </div>
         """, unsafe_allow_html=True)
-    
+
     st.markdown("---")
-    
+
     # Quick Statistics
     st.write("### 📊 Dataset Overview")
     c1, c2, c3, c4, c5 = st.columns(5)
@@ -262,13 +372,13 @@ def show_home():
     c3.metric("🌡️ Avg Temperature", f"{df['temperature'].mean():.1f}°C")
     c4.metric("💧 Avg Humidity", f"{df['humidity'].mean():.1f}%")
     c5.metric("📋 Features", f"{len(df.columns)}")
-    
+
     st.markdown("---")
-    
+
     # Dataset Sample
     with st.expander("📄 View Dataset Sample (First 10 Records)"):
         st.dataframe(df.head(10), width='stretch')
-    
+
     # Column Information
     with st.expander("📋 View Column Descriptions"):
         st.write("""
@@ -287,7 +397,7 @@ def show_home():
 def show_eda():
     """EDA Page - Mix of Charts, Text, Tables, Insights"""
     st.markdown("---")
-    
+
     # Introduction
     st.write("### 📊 Exploratory Data Analysis")
     st.write("""
@@ -296,9 +406,9 @@ def show_eda():
     - **Correlations** between features
     - **Temporal trends** (hourly, monthly patterns)
     """)
-    
+
     st.markdown("---")
-    
+
     # Key Statistics
     st.write("### 📈 Key Statistics")
     c1, c2, c3, c4 = st.columns(4)
@@ -306,43 +416,42 @@ def show_eda():
     c2.metric("Median Consumption", f"{df['use [kW]'].median():.2f} kW")
     c3.metric("Std Deviation", f"{df['use [kW]'].std():.2f} kW")
     c4.metric("Range", f"{df['use [kW]'].min():.1f} - {df['use [kW]'].max():.1f} kW")
-    
+
     st.markdown("---")
-    
+
     # Distribution Chart
     st.write("### 📉 Consumption Distribution")
     fig1 = px.histogram(df, x='use [kW]', nbins=50, title="Energy Consumption Distribution",
-                       color_discrete_sequence=['#000000'])
-    st.plotly_chart(fig1, width='stretch')
-    
+                        color_discrete_sequence=[AMBER])
+    show_chart(fig1)
+
     st.markdown("""
-    <div class="success-box">
-        <strong>Observation:</strong> Most consumption values cluster between 0.5-2.0 kW (typical household usage). 
+    <div class="callout teal">
+        <strong>Observation:</strong> Most consumption values cluster between 0.5-2.0 kW (typical household usage).
         Some high-consumption outliers exist (appliance spikes, AC usage).
     </div>
     """, unsafe_allow_html=True)
-    
+
     st.markdown("---")
-    
+
     # Correlation Heatmap
     st.write("### 🔗 Feature Correlation")
-    
+
     key_features = ['use [kW]', 'temperature', 'humidity', 'hour', 'month']
     key_features = [f for f in key_features if f in df.columns]
-    
+
     if len(key_features) >= 2:
         corr_df = df[key_features]
         corr_matrix = corr_df.corr()
-        
-        fig, ax = plt.subplots(figsize=(10, 8))
-        sns.heatmap(corr_matrix, annot=True, cmap='coolwarm', ax=ax, fmt='.2f',
-                   linewidths=2, linecolor='white', annot_kws={'size': 14, 'weight': 'bold'})
-        plt.title('Feature Correlation Matrix', fontsize=16, pad=20, fontweight='bold')
-        plt.xticks(rotation=45, ha='right', fontsize=12)
-        plt.yticks(rotation=0, fontsize=12)
-        plt.tight_layout()
-        st.pyplot(fig)
-        
+
+        fig = px.imshow(
+            corr_matrix, text_auto=".2f", zmin=-1, zmax=1, aspect="auto",
+            color_continuous_scale=[[0, TEAL], [0.5, PANEL], [1, AMBER]],
+            title="Feature Correlation Matrix"
+        )
+        fig.update_layout(height=480)
+        show_chart(fig)
+
         # Correlation Insights (TEXT + TABLE)
         st.write("#### 🔝 Top Correlations with Consumption")
         correlations = corr_matrix['use [kW]'].abs().sort_values(ascending=False)
@@ -351,41 +460,41 @@ def show_eda():
             'Correlation': correlations.values.round(2)
         })
         st.dataframe(corr_table.head(5), width='stretch')
-        
+
         if len(correlations) > 1:
             st.success(f"💡 **Strongest Predictor:** {correlations.index[1]} (correlation: {correlations.iloc[1]:.2f})")
-    
+
     st.markdown("---")
-    
+
     # Time Trends (TABS)
     st.write("### 📅 Time-Based Patterns")
-    
+
     tab1, tab2 = st.tabs(["Hourly Pattern", "Monthly Pattern"])
-    
+
     with tab1:
         st.write("#### Consumption by Hour of Day")
         hourly = df.groupby('hour')['use [kW]'].mean().reset_index()
         fig = px.bar(hourly, x='hour', y='use [kW]', title="Average Consumption by Hour",
-                    color_discrete_sequence=['#000000'])
-        st.plotly_chart(fig, width='stretch')
-        
+                     color_discrete_sequence=[AMBER])
+        show_chart(fig)
+
         st.markdown("""
-        <div class="info-box">
+        <div class="callout amber">
             <strong>Peak Hours:</strong> 6-9 AM (morning) and 5-10 PM (evening)<br>
             <strong>Low Hours:</strong> 11 PM - 5 AM (night)<br>
             <strong>Recommendation:</strong> Shift high-energy appliances to off-peak hours
         </div>
         """, unsafe_allow_html=True)
-    
+
     with tab2:
         st.write("#### Consumption by Month")
         monthly = df.groupby('month')['use [kW]'].mean().reset_index()
         fig = px.line(monthly, x='month', y='use [kW]', markers=True, title="Average Consumption by Month",
-                     color_discrete_sequence=['#000000'])
-        st.plotly_chart(fig, width='stretch')
-        
+                      color_discrete_sequence=[AMBER])
+        show_chart(fig)
+
         st.markdown("""
-        <div class="info-box">
+        <div class="callout amber">
             <strong>Summer:</strong> Higher consumption (AC usage)<br>
             <strong>Winter:</strong> Elevated consumption (heating)<br>
             <strong>Spring/Fall:</strong> Lower consumption (moderate weather)
@@ -395,26 +504,26 @@ def show_eda():
 def show_model_training():
     """Model Training Page - Interactive + Metrics + Results"""
     st.markdown("---")
-    
+
     st.write("### 🤖 Machine Learning Model Training")
     st.write("""
     Train and evaluate regression models to predict energy consumption.
     Select a model, adjust parameters, and see performance metrics.
     """)
-    
+
     st.markdown("---")
-    
+
     # Model Selection
     st.write("### ⚙️ Model Configuration")
-    
+
     features = ['temperature', 'humidity', 'hour', 'month', 'dayofweek']
     features = [f for f in features if f in df.columns]
     target = 'use [kW]'
-    
+
     if target in df.columns and len(features) >= 2:
-        model_choice = st.selectbox("Select Algorithm", 
-                                   ["Linear Regression", "Ridge Regression", "Random Forest", "XGBoost"])
-        
+        model_choice = st.selectbox("Select Algorithm",
+                                    ["Linear Regression", "Ridge Regression", "Random Forest", "XGBoost"])
+
         # Model-specific parameters
         use_gridsearch = False
         if model_choice == "Ridge Regression":
@@ -444,22 +553,22 @@ def show_model_training():
                     grid_max_depth = st.multiselect("max_depth options", [3, 5, 7], default=[3, 5])
                 with colg3:
                     grid_lr = st.multiselect("learning_rate options", [0.05, 0.1, 0.2], default=[0.05, 0.1])
-                
+
                 n_combos = max(len(grid_n_estimators), 1) * max(len(grid_max_depth), 1) * max(len(grid_lr), 1)
                 st.caption(f"⏱️ This will fit {n_combos} combinations × 3 folds = **{n_combos * 3} models**. "
                            f"To keep this fast in a live demo, GridSearch trains on a random sample of the data "
                            f"(max 50,000 rows) rather than the full dataset.")
-        
+
         # Train button
         if st.button("🚀 Train Model"):
             with st.spinner("Training model..."):
                 X = df[features]
                 y = df[target]
                 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-                
+
                 best_params_found = None
                 cv_results_df = None
-                
+
                 if model_choice == "Linear Regression":
                     model = LinearRegression()
                     model.fit(X_train, y_train)
@@ -489,7 +598,7 @@ def show_model_training():
                             X_grid, y_grid = X_train.loc[sample_idx], y_train.loc[sample_idx]
                         else:
                             X_grid, y_grid = X_train, y_train
-                        
+
                         param_grid = {
                             'n_estimators': grid_n_estimators if grid_n_estimators else [100],
                             'max_depth': grid_max_depth if grid_max_depth else [5],
@@ -511,20 +620,20 @@ def show_model_training():
                         # Refit best params on the FULL training set (not just the grid sample) for the final model
                         model.fit(X_train, y_train)
                         pred = model.predict(X_test)
-                
+
                 # Metrics
                 mae = mean_absolute_error(y_test, pred)
                 rmse = np.sqrt(mean_squared_error(y_test, pred))
                 r2 = r2_score(y_test, pred)
-                
+
                 st.markdown("---")
                 st.write("### 📏 Model Performance")
-                
+
                 c1, c2, c3 = st.columns(3)
                 c1.metric("MAE (Error)", f"{mae:.4f}")
                 c2.metric("RMSE (Error)", f"{rmse:.4f}")
                 c3.metric("R² (Accuracy)", f"{r2:.4f}")
-                
+
                 # GridSearch-specific output
                 if best_params_found is not None:
                     st.markdown("---")
@@ -536,18 +645,18 @@ def show_model_training():
                         "Note: search was run on a 50,000-row sample for speed; the winning hyperparameters "
                         "were then refit on the full training set to produce the metrics above."
                     )
-                
+
                 # Interpretation
                 st.markdown("---")
                 st.write("### 📊 Performance Interpretation")
-                
+
                 if r2 > 0.7:
                     st.success(f"✅ **Excellent!** R² = {r2:.4f} indicates strong predictive power")
                 elif r2 > 0.5:
                     st.info(f"👍 **Good!** R² = {r2:.4f} indicates moderate predictive power")
                 else:
                     st.warning(f"⚠️ **Fair** R² = {r2:.4f} - consider adding more features")
-                
+
                 # Feature Importance (for RF and XGBoost)
                 if model_choice in ("Random Forest", "XGBoost"):
                     st.markdown("---")
@@ -555,10 +664,10 @@ def show_model_training():
                     fi = pd.DataFrame({'Feature': features, 'Importance': model.feature_importances_})
                     fi = fi.sort_values('Importance', ascending=True)
                     fig = px.bar(fi, x='Importance', y='Feature', orientation='h',
-                                title="Which Features Matter Most?",
-                                color_discrete_sequence=['#000000'])
-                    st.plotly_chart(fig, width='stretch')
-                
+                                 title="Which Features Matter Most?",
+                                 color_discrete_sequence=[TEAL])
+                    show_chart(fig)
+
                 st.success(f"✅ {model_choice} trained successfully!")
     else:
         st.error("Missing required columns for training")
@@ -566,7 +675,7 @@ def show_model_training():
 def show_anomaly():
     """Anomaly Detection Page - Metrics + Scatter + Table"""
     st.markdown("---")
-    
+
     st.write("### 🔍 Anomaly Detection")
     st.write("""
     Identify unusual consumption patterns that may indicate:
@@ -574,9 +683,9 @@ def show_anomaly():
     - **Equipment malfunction** (faulty appliances)
     - **Energy leakage** (wastage)
     """)
-    
+
     st.markdown("---")
-    
+
     if 'use [kW]' in df.columns:
         # IQR Calculation
         Q1 = df['use [kW]'].quantile(0.25)
@@ -584,55 +693,55 @@ def show_anomaly():
         IQR = Q3 - Q1
         lower = Q1 - 1.5 * IQR
         upper = Q3 + 1.5 * IQR
-        
+
         df['anomaly'] = ((df['use [kW]'] < lower) | (df['use [kW]'] > upper))
         anomalies = df[df['anomaly'] == True]
         normal = df[df['anomaly'] == False]
-        
+
         # Metrics
         st.write("### 📊 Detection Results")
         c1, c2, c3 = st.columns(3)
         c1.metric("📁 Total Records", f"{len(df):,}")
         c2.metric("🚨 Anomalies Detected", f"{len(anomalies):,}")
         c3.metric("✅ Normal Records", f"{len(normal):,}")
-        
+
         # Percentage
         anomaly_pct = (len(anomalies) / len(df)) * 100
         st.write(f"**Anomaly Rate:** {anomaly_pct:.2f}%")
-        
+
         if anomaly_pct > 5:
             st.warning("⚠️ High anomaly rate - recommend investigation")
         else:
             st.success("✅ Normal anomaly rate")
-        
+
         st.markdown("---")
-        
+
         # Method Explanation
         with st.expander("📖 How IQR Method Works"):
             st.write("""
             **Step 1:** Calculate Q1 (25th percentile) and Q3 (75th percentile)
-            
+
             **Step 2:** Calculate IQR = Q3 - Q1
-            
+
             **Step 3:** Define bounds:
             - Lower Bound = Q1 - 1.5 × IQR
             - Upper Bound = Q3 + 1.5 × IQR
-            
+
             **Step 4:** Flag values outside bounds as anomalies
             """)
-        
+
         st.markdown("---")
-        
+
         # Visualization
         st.write("### 📈 Anomaly Visualization")
         plot_df = df.head(1000).reset_index(drop=True)
         fig = px.scatter(plot_df, y='use [kW]', color='anomaly',
-                        color_discrete_map={False: '#000000', True: '#dc3545'},
-                        title="Energy Consumption (Red = Anomaly)")
-        st.plotly_chart(fig, width='stretch')
-        
+                         color_discrete_map={False: TEAL, True: RED, "False": TEAL, "True": RED},
+                         title="Energy Consumption (Red = Anomaly)")
+        show_chart(fig)
+
         st.markdown("---")
-        
+
         # Sample Anomalous Records
         st.write("### 📋 Sample Anomalous Records")
         if len(anomalies) > 0:
@@ -646,73 +755,79 @@ def show_anomaly():
 def show_comparison():
     """Model Comparison Page - Table + Chart + Winner"""
     st.markdown("---")
-    
+
     st.write("### 📊 Model Comparison")
     st.write("""
     Compare all four models on the same test set to determine the best performer.
     All models trained with 80-20 train-test split.
     """)
-    
+
     st.markdown("---")
-    
+
     features = ['temperature', 'humidity', 'hour', 'month']
     features = [f for f in features if f in df.columns]
     target = 'use [kW]'
-    
+
     if target in df.columns and len(features) >= 2:
         X = df[features]
         y = df[target]
         X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-        
+
         results = {}
-        
+
         # Linear Regression
         lr = LinearRegression()
         lr.fit(X_train, y_train)
         results['Linear'] = r2_score(y_test, lr.predict(X_test))
-        
+
         # Ridge
         ridge = Ridge(alpha=1.0)
         ridge.fit(X_train, y_train)
         results['Ridge'] = r2_score(y_test, ridge.predict(X_test))
-        
+
         # Random Forest
         rf = RandomForestRegressor(n_estimators=50, random_state=42)
         rf.fit(X_train, y_train)
         results['RF'] = r2_score(y_test, rf.predict(X_test))
-        
+
         # XGBoost (fixed reasonable defaults — fast, no tuning here; tuning lives on Model Training page)
         xgb = XGBRegressor(n_estimators=100, max_depth=5, learning_rate=0.1, random_state=42)
         xgb.fit(X_train, y_train)
         results['XGBoost'] = r2_score(y_test, xgb.predict(X_test))
-        
+
         # Results Table
-        st.write("###  Performance Comparison")
+        st.write("### Performance Comparison")
         results_df = pd.DataFrame(list(results.items()), columns=['Model', 'R2_Score'])
         results_df['R2_Score'] = results_df['R2_Score'].round(4)
-        st.dataframe(results_df.style.highlight_max(color='lightgreen'), width='stretch')
-        
+        st.dataframe(
+            results_df.style.highlight_max(
+                subset=['R2_Score'],
+                props='background-color: rgba(255,176,32,0.30); color: #ffffff; font-weight: 700;'
+            ),
+            width='stretch'
+        )
+
         st.markdown("---")
-        
+
         # Bar Chart
         st.write("### 📈 Visual Comparison")
         fig = px.bar(results_df, x='Model', y='R2_Score', color='R2_Score',
-                    title="R² Score Comparison (Higher = Better)",
-                    color_continuous_scale='Blues')
-        st.plotly_chart(fig, width='stretch')
-        
+                     title="R² Score Comparison (Higher = Better)",
+                     color_continuous_scale=[[0, "#3a4a72"], [1, AMBER]])
+        show_chart(fig)
+
         st.markdown("---")
-        
+
         # Winner Announcement
         best = results_df.loc[results_df['R2_Score'].idxmax(), 'Model']
         st.markdown(f"""
-        <div class="success-box">
+        <div class="callout teal">
             <h3>🏆 Best Performing Model: {best}</h3>
             <p>R² Score: {results_df.loc[results_df['Model'] == best, 'R2_Score'].values[0]:.4f}</p>
             <p><strong>Recommendation:</strong> Use this model for production deployment</p>
         </div>
         """, unsafe_allow_html=True)
-        
+
         # Why This Model Won
         with st.expander("💡 Why Did This Model Win?"):
             if best == 'Linear':
@@ -736,19 +851,18 @@ def show_live_prediction():
     st.markdown("---")
     st.write("### ⚡ Live Energy Prediction")
     st.write("Enter current conditions to predict energy consumption:")
-    
+
     col1, col2, col3 = st.columns(3)
-    
+
     with col1:
         temp = st.slider("Temperature (°C)", 10.0, 40.0, 25.0, 0.5)
     with col2:
         humidity = st.slider("Humidity (%)", 30.0, 90.0, 60.0, 5.0)
     with col3:
         hour = st.slider("Hour of Day", 0, 23, 12)
-    
+
     # Make prediction
     if st.button("🔮 Predict Now"):
-        # Use your trained model
         input_data = pd.DataFrame({
             'temperature': [temp],
             'humidity': [humidity],
@@ -756,24 +870,24 @@ def show_live_prediction():
             'month': [datetime.now().month],
             'dayofweek': [datetime.now().weekday()]
         })
-        
-        # Load your best model (Random Forest)
+
+        # Train the Random Forest on the full dataset
         model = RandomForestRegressor(n_estimators=100, random_state=42)
         features = ['temperature', 'humidity', 'hour', 'month', 'dayofweek']
         X = df[features]
         y = df['use [kW]']
         model.fit(X, y)
-        
+
         prediction = model.predict(input_data)[0]
-        
+
         # Display result
         st.markdown(f"""
-        <div class="success-box" style="text-align: center; padding: 2rem;">
-            <h2 style="font-size: 3rem; margin: 0;">⚡ {prediction:.2f} kW</h2>
-            <p style="font-size: 1.2rem;">Predicted Energy Consumption</p>
+        <div class="result">
+            <div class="result-value">{prediction:.2f} kW</div>
+            <div class="result-label">Predicted energy consumption</div>
         </div>
         """, unsafe_allow_html=True)
-        
+
         # Recommendation
         if prediction > 2.0:
             st.warning("⚠️ **High Consumption Alert:** Consider turning off non-essential appliances")
@@ -781,10 +895,6 @@ def show_live_prediction():
             st.info("ℹ️ **Moderate Consumption:** Normal usage pattern")
         else:
             st.success("✅ **Low Consumption:** Efficient energy usage!")
-
-# Add this to your navigation
-# In sidebar, add: "Live Prediction"
-# Then add: elif page == "Live Prediction": show_live_prediction()
 
 # ═══════════════════════════════════════════════════════════════════════════
 # PAGE ROUTER
@@ -799,8 +909,9 @@ elif page == "Anomaly Detection":
     show_anomaly()
 elif page == "Model Comparison":
     show_comparison()
-elif page == "Live Prediction": 
+elif page == "Live Prediction":
     show_live_prediction()
+
 # ═══════════════════════════════════════════════════════════════════════════
 # FOOTER
 # ═══════════════════════════════════════════════════════════════════════════
